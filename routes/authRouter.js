@@ -1,6 +1,7 @@
 import express from "express";
 import bcrypt from "bcrypt";
 import { PrismaClient } from "@prisma/client";
+import jsonwebtoken from "jsonwebtoken";
 
 const authRouter = express.Router();
 const prisma = new PrismaClient();
@@ -92,14 +93,34 @@ authRouter.post("/signin", async (req, res) => {
   try {
     const user = await prisma.user.findUnique({ where: { email } });
     if (!user) {
-      throw new Error("Invalid credentials.");
+      return res.status(401).json({ error: "Invalid credentials." });
     }
+
     const isValid = await bcrypt.compare(password, user.password);
     if (!isValid) {
-      throw new Error("Invalid credentials.");
+      return res.status(401).json({ error: "Invalid credentials." });
     }
+
+    const userSignature = {
+      userId: user.id,
+      tokenVersion: user.tokenVersion,
+    };
+
+    const acccessToken = jsonwebtoken.sign(
+      userSignature,
+      process.env.JWT_SECRET,
+      { expiresIn: process.env.ACCESS_TOKEN_EXPIRATION }
+    );
+    const refreshToken = jsonwebtoken.sign(
+      userSignature,
+      process.env.REFRESH_TOKEN_SECRET,
+      { expiresIn: process.env.REFRESH_TOKEN_EXPIRATION }
+    );
+
     return res.status(200).json({
       userId: user.id,
+      acccessToken,
+      refreshToken,
     });
   } catch (err) {
     console.error("Error during signin: ", err);
